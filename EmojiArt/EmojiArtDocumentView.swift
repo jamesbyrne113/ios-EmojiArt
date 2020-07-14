@@ -30,6 +30,8 @@ struct EmojiArtDocumentView: View {
                         Group {
                             if self.document.backgroundImage != nil {
                                 Image(uiImage: self.document.backgroundImage!)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
                             }
                         }
                     )
