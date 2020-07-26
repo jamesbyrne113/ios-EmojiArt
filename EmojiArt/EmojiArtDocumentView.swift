@@ -13,18 +13,23 @@ struct EmojiArtDocumentView: View {
     
     @State private var selectedEmojiIds = Set<Int>()
     
+    @State private var chosenPalette: String = ""
+    
     var body: some View {
         VStack {
-            ScrollView(.horizontal) {
-                HStack {
-                    ForEach(EmojiArtDocument.palette.map { String($0) }, id: \.self) { emoji in
-                        Text(emoji)
-                            .font(Font.system(size: self.defaultEmojiSize))
-                            .onDrag { return NSItemProvider(object: emoji as NSString) }
+            HStack {
+                PaletteChooser(document: document, chosenPalette: $chosenPalette)
+                ScrollView(.horizontal) {
+                    HStack {
+                        ForEach(chosenPalette.map { String($0) }, id: \.self) { emoji in
+                            Text(emoji)
+                                .font(Font.system(size: self.defaultEmojiSize))
+                                .onDrag { return NSItemProvider(object: emoji as NSString) }
+                        }
                     }
                 }
+                .onAppear { self.chosenPalette = self.document.defaultPalette }
             }
-                .padding(.horizontal)
             
             GeometryReader { geometry in
                 ZStack {
@@ -34,20 +39,28 @@ struct EmojiArtDocumentView: View {
                             .offset(self.panOffset)
                     )
                         .gesture(self.doubleTapToZoom(in: geometry.size).exclusively(before: self.tapBackground()))
-                    ForEach(self.document.emojis) { emoji in
-                        Text(emoji.text)
-                            .font(animatableWithSize: self.emojiScale(emoji))
-                            .opacity(self.selectedEmojiIds.contains(emoji.id) ? 0.5 : 1)
-                            .position(self.position(for: emoji, in: geometry.size))
-                            .gesture(self.tapEmoji(emoji))
-                            .gesture(self.dragSelectedEmojis())
-                            .gesture(self.longPressEmoji(emoji))
+                    if self.isLoading {
+                        Image(systemName: "hourglass").imageScale(.large).spinning()
+                    } else {
+                        ForEach(self.document.emojis) { emoji in
+                            Text(emoji.text)
+                                .font(animatableWithSize: self.emojiScale(emoji))
+                                .opacity(self.selectedEmojiIds.contains(emoji.id) ? 0.5 : 1)
+                                .position(self.position(for: emoji, in: geometry.size))
+                                .gesture(self.tapEmoji(emoji))
+                                .gesture(self.dragSelectedEmojis())
+                                .gesture(self.longPressEmoji(emoji))
+                        }
                     }
+                    
                 }
                     .clipped()
                     .gesture(self.panGesture())
                     .gesture(self.zoomGesture())
                     .edgesIgnoringSafeArea([.horizontal, .bottom])
+                    .onReceive(self.document.$backgroundImage) { image in
+                        self.zoomToFit(image, in: geometry.size)
+                    }
                     .onDrop(of: ["public.image", "public.text"], isTargeted: nil) { providers, location in
                         var location = geometry.convert(location, from: .global)
                         location = CGPoint(x: location.x - geometry.size.width/2, y: location.y - geometry.size.height/2)
@@ -57,6 +70,10 @@ struct EmojiArtDocumentView: View {
                     }
             }
         }
+    }
+    
+    var isLoading: Bool {
+        document.backgroundURL != nil && document.backgroundImage == nil
     }
     
     private func longPressEmoji(_ emoji: EmojiArt.Emoji) -> some Gesture {
@@ -193,7 +210,7 @@ struct EmojiArtDocumentView: View {
     
     private func drop(providers: [NSItemProvider], at location: CGPoint) -> Bool {
         var found = providers.loadFirstObject(ofType: URL.self) { url in
-            self.document.setBackgroundURL(url)
+            self.document.backgroundURL = url
         }
         if !found {
             found = providers.loadObjects(ofType: String.self) { string in
